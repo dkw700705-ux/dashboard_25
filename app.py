@@ -13,7 +13,6 @@ from reportlab.lib.units import cm
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 
 st.set_page_config(
     page_title="대학 적응 대시보드",
@@ -143,16 +142,10 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
         topMargin=2*cm, bottomMargin=2*cm
     )
 
-    # 한글 폰트 설정
-    font_name = "Helvetica"
-    try:
-        for font_path in fm.findSystemFonts():
-            if any(k in font_path.lower() for k in ["nanum", "malgun", "gulim", "batang", "dotum"]):
-                pdfmetrics.registerFont(TTFont("Korean", font_path))
-                font_name = "Korean"
-                break
-    except Exception:
-        pass
+    # 한글 폰트 설정 (ReportLab 내장 한국어 CID 폰트)
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    pdfmetrics.registerFont(UnicodeCIDFont("HYGothic-Medium"))
+    font_name = "HYGothic-Medium"
 
     # matplotlib 한글 폰트
     try:
