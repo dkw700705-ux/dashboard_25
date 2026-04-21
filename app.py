@@ -2,9 +2,21 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import io
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image as RLImage
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 st.set_page_config(
-    page_title="25학번 대학 적응 조사 대시보드",
+    page_title="대학 적응 대시보드",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -14,7 +26,7 @@ password = st.sidebar.text_input("비밀번호", type="password")
 if password != "4872":
     st.warning("비밀번호를 입력해주세요.")
     st.stop()
-    
+
 st.markdown("""
 <style>
     [data-testid="stSidebar"] { background-color: #1e2a3a; }
@@ -123,12 +135,232 @@ def load_data():
     return df_type, df_area, df_item, item_map
 
 
+def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=2*cm, leftMargin=2*cm,
+        topMargin=2*cm, bottomMargin=2*cm
+    )
+
+    # 한글 폰트 설정
+    font_name = "Helvetica"
+    try:
+        for font_path in fm.findSystemFonts():
+            if any(k in font_path.lower() for k in ["nanum", "malgun", "gulim", "batang", "dotum"]):
+                pdfmetrics.registerFont(TTFont("Korean", font_path))
+                font_name = "Korean"
+                break
+    except Exception:
+        pass
+
+    # matplotlib 한글 폰트
+    try:
+        plt.rcParams["font.family"] = "Malgun Gothic"
+    except Exception:
+        try:
+            plt.rcParams["font.family"] = "AppleGothic"
+        except Exception:
+            pass
+    plt.rcParams["axes.unicode_minus"] = False
+
+    def style(name, **kwargs):
+        base = {"fontName": font_name, "fontSize": 10, "leading": 14}
+        base.update(kwargs)
+        return ParagraphStyle(name, **base)
+
+    title_s  = style("title",  fontSize=18, leading=24, textColor=colors.HexColor("#2c3e50"), spaceAfter=6)
+    h2_s     = style("h2",     fontSize=13, leading=18, textColor=colors.HexColor("#667eea"), spaceBefore=14, spaceAfter=6)
+    area_s   = style("area",   fontSize=11, leading=15, textColor=colors.HexColor("#2c3e50"), spaceBefore=8, spaceAfter=4)
+    normal_s = style("normal", fontSize=10, leading=14, spaceAfter=4)
+    small_s  = style("small",  fontSize=8,  leading=11, textColor=colors.HexColor("#666666"))
+
+    story = []
+
+    # 제목
+    story.append(Paragraph(f"{dept} 대학 적응 분석 보고서", title_s))
+    story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor("#667eea")))
+    story.append(Spacer(1, 0.3*cm))
+
+    tr = df_type[df_type["학과"] == dept]
+    ar = df_area[df_area["학과"] == dept]
+    if tr.empty or ar.empty:
+        story.append(Paragraph("데이터 없음", normal_s))
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+
+    tr = tr.iloc[0]
+    ar = ar.iloc[0]
+    total = int(tr["총계"]) if pd.notna(tr["총계"]) else 0
+    story.append(Paragraph(f"응답자 수: {total}명", normal_s))
+    story.append(Spacer(1, 0.3*cm))
+
+    # 1. 유형 분류
+    story.append(Paragraph("1. 적응 유형 분류", h2_s))
+    types = ["저적응위기형", "적응취약형", "적응안정형", "고적응성취형"]
+    type_data = [["유형", "빈도(명)", "비율(%)"]]
+    for t in types:
+        b = tr.get(f"{t}_빈도", 0)
+        r = tr.get(f"{t}_비율", 0)
+        b = int(b) if pd.notna(b) else 0
+        r = float(r) * 100 if pd.notna(r) else 0
+        type_data.append([t, str(b), f"{r:.1f}%"])
+    type_data.append(["총계", str(total), "100.0%"])
+
+    type_table = Table(type_data, colWidths=[5*cm, 3*cm, 3*cm])
+    type_table.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#667eea")),
+        ("TEXTCOLOR",     (0,0), (-1,0),  colors.white),
+        ("FONTNAME",      (0,0), (-1,-1), font_name),
+        ("FONTSIZE",      (0,0), (-1,-1), 10),
+        ("ALIGN",         (1,0), (-1,-1), "CENTER"),
+        ("ROWBACKGROUNDS",(0,1), (-1,-2), [colors.HexColor("#f8f9fa"), colors.white]),
+        ("BACKGROUND",    (0,-1),(-1,-1), colors.HexColor("#ecf0f1")),
+        ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#cccccc")),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+    ]))
+    story.append(type_table)
+
+    # 파이차트
+    story.append(Spacer(1, 0.4*cm))
+    valid_types = [(t, tr.get(f"{t}_빈도", 0)) for t in types
+                   if pd.notna(tr.get(f"{t}_빈도", 0)) and tr.get(f"{t}_빈도", 0) > 0]
+    if valid_types:
+        pie_colors = {"저적응위기형": "#e74c3c", "적응취약형": "#e67e22",
+                      "적응안정형": "#3498db", "고적응성취형": "#2ecc71"}
+        fig, ax = plt.subplots(figsize=(5, 3))
+        ax.pie(
+            [v[1] for v in valid_types],
+            labels=[v[0] for v in valid_types],
+            colors=[pie_colors[v[0]] for v in valid_types],
+            autopct="%1.1f%%", startangle=90,
+            textprops={"fontsize": 8}
+        )
+        ax.set_title(f"{dept} 유형 분포", fontsize=10)
+        img_buf = io.BytesIO()
+        plt.savefig(img_buf, format="png", dpi=120, bbox_inches="tight")
+        plt.close()
+        img_buf.seek(0)
+        story.append(RLImage(img_buf, width=10*cm, height=6*cm))
+
+    # 2. 영역별 적응
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph("2. 영역별 적응 점수", h2_s))
+    AREAS = ["학업적응", "사회적응", "대학적응", "경제적응", "정서적응", "진로적응", "중도탈락의도"]
+    area_data = [["영역", f"{dept} 평균", "전체 평균", "차이"]]
+    for a in AREAS:
+        dm = ar.get(f"{a}_평균", None)
+        am = ar_all.get(f"{a}_평균", None) if ar_all is not None else None
+        diff = dm - am if pd.notna(dm) and pd.notna(am) else None
+        area_data.append([
+            a,
+            f"{dm:.2f}" if pd.notna(dm) else "-",
+            f"{am:.2f}" if pd.notna(am) else "-",
+            f"{diff:+.2f}" if diff is not None else "-"
+        ])
+
+    area_table = Table(area_data, colWidths=[4*cm, 3*cm, 3*cm, 3*cm])
+    area_table.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#667eea")),
+        ("TEXTCOLOR",     (0,0), (-1,0),  colors.white),
+        ("FONTNAME",      (0,0), (-1,-1), font_name),
+        ("FONTSIZE",      (0,0), (-1,-1), 10),
+        ("ALIGN",         (1,0), (-1,-1), "CENTER"),
+        ("ROWBACKGROUNDS",(0,1), (-1,-1), [colors.HexColor("#f8f9fa"), colors.white]),
+        ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#cccccc")),
+        ("TOPPADDING",    (0,0), (-1,-1), 5),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 5),
+    ]))
+    story.append(area_table)
+
+    # 영역별 바차트
+    story.append(Spacer(1, 0.4*cm))
+    radar_areas = ["학업적응", "사회적응", "대학적응", "경제적응", "정서적응", "진로적응"]
+    dept_vals = [ar.get(f"{a}_평균", 0) for a in radar_areas]
+    all_vals  = [ar_all.get(f"{a}_평균", 0) for a in radar_areas] if ar_all is not None else [0]*6
+    dept_vals = [v if pd.notna(v) else 0 for v in dept_vals]
+    all_vals  = [v if pd.notna(v) else 0 for v in all_vals]
+
+    fig, ax = plt.subplots(figsize=(7, 3.5))
+    x = list(range(len(radar_areas)))
+    ax.bar(x, dept_vals, color="#667eea", alpha=0.8, label=dept)
+    ax.plot(x, all_vals, "o--", color="#2c3e50", linewidth=1.5, markersize=5, label="전체 평균")
+    ax.set_xticks(x)
+    ax.set_xticklabels(radar_areas, fontsize=8)
+    ax.set_ylim(0, 5.5)
+    ax.set_ylabel("평균 점수", fontsize=8)
+    ax.legend(fontsize=8)
+    ax.set_title("영역별 적응 점수 비교", fontsize=10)
+    ax.grid(axis="y", alpha=0.3)
+    for i, d in enumerate(dept_vals):
+        ax.text(i, d + 0.05, f"{d:.2f}", ha="center", fontsize=7)
+    img_buf2 = io.BytesIO()
+    plt.savefig(img_buf2, format="png", dpi=120, bbox_inches="tight")
+    plt.close()
+    img_buf2.seek(0)
+    story.append(RLImage(img_buf2, width=14*cm, height=7*cm))
+
+    # 3. 문항별 상세
+    story.append(Spacer(1, 0.3*cm))
+    story.append(Paragraph("3. 문항별 상세 점수", h2_s))
+
+    ir = df_item[df_item["학과"] == dept]
+    if not ir.empty:
+        ir = ir.iloc[0]
+        for area, items in item_map.items():
+            if not items:
+                continue
+            story.append(Paragraph(f"▶ {area}", area_s))
+            item_data = [["문항", dept, "전체", "차이"]]
+            for item_name, mc, sc in items:
+                key_m = f"{area}||{item_name}||평균"
+                dm = ir.get(key_m, None)
+                am = ir_all.get(key_m, None) if ir_all is not None else None
+                diff = dm - am if pd.notna(dm) and pd.notna(am) else None
+                is_rev = "[역] " if item_name.endswith("*") else ""
+                short = item_name.rstrip("*").strip()
+                if len(short) > 35:
+                    short = short[:35] + "..."
+                item_data.append([
+                    f"{is_rev}{short}",
+                    f"{dm:.2f}" if pd.notna(dm) else "-",
+                    f"{am:.2f}" if pd.notna(am) else "-",
+                    f"{diff:+.2f}" if diff is not None else "-"
+                ])
+            tbl = Table(item_data, colWidths=[9*cm, 2.2*cm, 2.2*cm, 2.2*cm])
+            tbl.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#34495e")),
+                ("TEXTCOLOR",     (0,0), (-1,0),  colors.white),
+                ("FONTNAME",      (0,0), (-1,-1), font_name),
+                ("FONTSIZE",      (0,0), (-1,-1), 8),
+                ("ALIGN",         (1,0), (-1,-1), "CENTER"),
+                ("ROWBACKGROUNDS",(0,1), (-1,-1), [colors.HexColor("#f8f9fa"), colors.white]),
+                ("GRID",          (0,0), (-1,-1), 0.3, colors.HexColor("#dddddd")),
+                ("TOPPADDING",    (0,0), (-1,-1), 3),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 3),
+            ]))
+            story.append(tbl)
+            story.append(Spacer(1, 0.2*cm))
+
+    story.append(Spacer(1, 0.5*cm))
+    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cccccc")))
+    story.append(Paragraph(
+        "[역] 역문항은 점수 변환 처리되어 있으며, 모든 문항에서 점수가 높을수록 긍정적 의미입니다.",
+        small_s
+    ))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
 df_type, df_area, df_item, item_map = load_data()
 
 학과_목록 = [d for d in df_type["학과"].tolist() if d != "총계"]
 전체_key = "총계"
 
-AREA_LABELS = ["학업적응", "사회적응", "대학적응", "경제적응", "정서적응", "진로적응", "중도탈락의도"]
 TYPE_COLORS = {
     "저적응위기형": "#e74c3c",
     "적응취약형":   "#e67e22",
@@ -172,14 +404,15 @@ def get_item_row(dept):
     return r.iloc[0] if not r.empty else None
 
 
-tr_s = get_type_row(selected)
-ar_s = get_area_row(selected)
-ir_s = get_item_row(selected)
+tr_s  = get_type_row(selected)
+ar_s  = get_area_row(selected)
+ir_s  = get_item_row(selected)
 tr_all = get_type_row(전체_key)
 ar_all = get_area_row(전체_key)
 ir_all = get_item_row(전체_key)
 
-tab1, tab2, tab3 = st.tabs(["📊 유형 분류", "📈 영역별 적응", "📋 문항별 상세"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 유형 분류", "📈 영역별 적응", "📋 문항별 상세", "📄 보고서 다운로드"])
+
 
 # ── TAB 1: 유형 분류 ──────────────────────────────────────
 with tab1:
@@ -241,7 +474,7 @@ with tab1:
             st.markdown(f"<div class='section-title'>전체 대학 비교</div>", unsafe_allow_html=True)
             fig2 = go.Figure()
             x_labels = [t.replace("형", "") for t in types]
-            dept_pct = [r * 100 if pd.notna(r) else 0 for r in 비율s]
+            dept_pct  = [r * 100 if pd.notna(r) else 0 for r in 비율s]
             total_pct = [r * 100 if pd.notna(r) else 0 for r in 전체비율s]
 
             fig2.add_trace(go.Bar(
@@ -314,9 +547,9 @@ with tab2:
 
         with c1:
             st.markdown(f"<div class='section-title'>적응 영역 레이더 차트</div>", unsafe_allow_html=True)
-            theta = AREAS_RADAR + [AREAS_RADAR[0]]
+            theta  = AREAS_RADAR + [AREAS_RADAR[0]]
             dept_r = [v if pd.notna(v) else 0 for v in dept_vals] + [dept_vals[0] if pd.notna(dept_vals[0]) else 0]
-            all_r  = [v if pd.notna(v) else 0 for v in all_vals]  + [all_vals[0] if pd.notna(all_vals[0]) else 0]
+            all_r  = [v if pd.notna(v) else 0 for v in all_vals]  + [all_vals[0]  if pd.notna(all_vals[0])  else 0]
 
             fig = go.Figure()
             fig.add_trace(go.Scatterpolar(
@@ -342,13 +575,13 @@ with tab2:
         with c2:
             st.markdown(f"<div class='section-title'>영역별 점수 비교</div>", unsafe_allow_html=True)
             fig2 = go.Figure()
-            colors = ["#e74c3c" if v < a - 0.1 else "#2ecc71" if v > a + 0.1 else "#667eea"
-                      for v, a in zip(dept_vals, all_vals)]
+            colors_bar = ["#e74c3c" if v < a - 0.1 else "#2ecc71" if v > a + 0.1 else "#667eea"
+                          for v, a in zip(dept_vals, all_vals)]
             fig2.add_trace(go.Bar(
                 name=selected,
                 x=AREAS_RADAR,
                 y=[v if pd.notna(v) else 0 for v in dept_vals],
-                marker_color=colors,
+                marker_color=colors_bar,
                 error_y=dict(type="data", array=[s if pd.notna(s) else 0 for s in dept_sd], visible=True, color="#999"),
                 text=[f"{v:.2f}" if pd.notna(v) else "-" for v in dept_vals],
                 textposition="outside", textfont_size=12
@@ -375,7 +608,6 @@ with tab2:
         st.markdown("<div class='section-title'>⚠️ 중도탈락의도</div>", unsafe_allow_html=True)
         d_val = ar_s.get("중도탈락의도_평균", None)
         a_val = ar_all.get("중도탈락의도_평균", None) if ar_all is not None else None
-        d_sd  = ar_s.get("중도탈락의도_SD", None)
         mc1, mc2, mc3 = st.columns(3)
         with mc1:
             if pd.notna(d_val):
@@ -409,16 +641,15 @@ with tab2:
         col_name = f"{area_sel}_평균"
         df_plot = df_area[df_area["학과"] != "총계"][["학과", col_name]].dropna().copy()
         df_plot = df_plot.sort_values(col_name, ascending=True)
-        df_plot["color"] = df_plot["학과"].apply(lambda x: "#e74c3c" if x == selected else "#aab7c4")
-        df_plot["size"]  = df_plot["학과"].apply(lambda x: 14 if x == selected else 8)
 
         fig3 = go.Figure()
         for _, row in df_plot.iterrows():
+            is_sel = row["학과"] == selected
             fig3.add_trace(go.Scatter(
                 x=[row[col_name]], y=[row["학과"]],
                 mode="markers+text",
-                marker=dict(size=row["size"], color=row["color"]),
-                text=[f"  {row[col_name]:.2f}"] if row["학과"] == selected else [""],
+                marker=dict(size=14 if is_sel else 8, color="#e74c3c" if is_sel else "#aab7c4"),
+                text=[f"  {row[col_name]:.2f}"] if is_sel else [""],
                 textposition="middle right",
                 showlegend=False,
                 hovertemplate=f"{row['학과']}: {row[col_name]:.2f}<extra></extra>"
@@ -467,19 +698,19 @@ with tab3:
                     all_means.append(am if pd.notna(am) else 0)
                     is_reverse = item_name.endswith("*")
                     clean = item_name.replace("나는 ", "").replace("나의 ", "")
-                    if len(clean) > 50:
-                        clean = clean[:50] + "…"
+                    if len(clean) > 35:
+                        clean = clean[:35] + "…"
                     label = f"🔄 {clean}" if is_reverse else clean
                     labels.append(label)
 
-                colors = ["#e74c3c" if d < a - 0.15 else "#2ecc71" if d > a + 0.15 else "#667eea"
-                          for d, a in zip(dept_means, all_means)]
+                colors_item = ["#e74c3c" if d < a - 0.15 else "#2ecc71" if d > a + 0.15 else "#667eea"
+                               for d, a in zip(dept_means, all_means)]
 
                 fig = go.Figure()
                 fig.add_trace(go.Bar(
                     name=selected, y=labels, x=dept_means,
                     orientation="h",
-                    marker_color=colors,
+                    marker_color=colors_item,
                     error_x=dict(type="data", array=dept_sds, visible=True, color="#bbb"),
                     text=[f"{v:.2f}" for v in dept_means],
                     textposition="outside",
@@ -521,9 +752,8 @@ with tab3:
                         ds = ir_s.get(key_s, np.nan)
                         am = ir_all.get(key_m, np.nan) if ir_all is not None else np.nan
                         diff = dm - am if pd.notna(dm) and pd.notna(am) else np.nan
-                        is_reverse = "🔄" if item_name.endswith("*") else ""
                         tbl.append({
-                            "역": is_reverse,
+                            "역": "🔄" if item_name.endswith("*") else "",
                             "문항": item_name.rstrip("*").strip(),
                             f"{selected} 평균": f"{dm:.2f}" if pd.notna(dm) else "-",
                             "SD": f"{ds:.2f}" if pd.notna(ds) else "-",
@@ -531,3 +761,22 @@ with tab3:
                             "차이": f"{diff:+.2f}" if pd.notna(diff) else "-",
                         })
                     st.dataframe(pd.DataFrame(tbl), use_container_width=True, hide_index=True)
+
+
+# ── TAB 4: 보고서 다운로드 ────────────────────────────────
+with tab4:
+    st.markdown("<div class='section-title'>📄 PDF 보고서 다운로드</div>", unsafe_allow_html=True)
+    st.markdown(f"**{selected}** 학과의 전체 분석 결과를 PDF 보고서로 다운로드할 수 있습니다.")
+    st.markdown("보고서에는 **유형 분류**, **영역별 점수**, **문항별 상세** 내용이 포함됩니다.")
+    st.markdown("")
+
+    if st.button(f"📥 {selected} 보고서 생성", type="primary"):
+        with st.spinner("PDF 생성 중..."):
+            pdf_buf = make_pdf(selected, df_type, df_area, df_item, item_map, ar_all, ir_all)
+        st.download_button(
+            label="⬇️ PDF 다운로드",
+            data=pdf_buf,
+            file_name=f"{selected}_적응분석보고서.pdf",
+            mime="application/pdf"
+        )
+        st.success("보고서가 생성되었습니다!")
