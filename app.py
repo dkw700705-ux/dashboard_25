@@ -10,7 +10,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
- password = st.sidebar.text_input("비밀번호", type="password")
+password = st.sidebar.text_input("비밀번호", type="password")
 if password != "4872":
     st.warning("비밀번호를 입력해주세요.")
     st.stop()
