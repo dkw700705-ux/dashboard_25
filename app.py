@@ -317,15 +317,15 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
                 diff = dm - am if pd.notna(dm) and pd.notna(am) else None
                 is_rev = "[역] " if item_name.endswith("*") else ""
                 short = item_name.rstrip("*").strip()
-                if len(short) > 55:
-                    short = short[:55] + "..."
+                if len(short) > 25:
+                    short = short[:25] + "\n" + short[25:]
                 item_data.append([
                     f"{is_rev}{short}",
                     f"{dm:.2f}" if pd.notna(dm) else "-",
                     f"{am:.2f}" if pd.notna(am) else "-",
                     f"{diff:+.2f}" if diff is not None else "-"
                 ])
-            tbl = Table(item_data, colWidths=[9*cm, 2.2*cm, 2.2*cm, 2.2*cm])
+            tbl = Table(item_data, colWidths=[9*cm, 2.2*cm, 2.2*cm, 2.2*cm], repeatRows=1)
             tbl.setStyle(TableStyle([
                 ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#34495e")),
                 ("TEXTCOLOR",     (0,0), (-1,0),  colors.white),
