@@ -694,8 +694,8 @@ with tab3:
                     all_means.append(am if pd.notna(am) else 0)
                     is_reverse = item_name.endswith("*")
                     clean = item_name.replace("나는 ", "").replace("나의 ", "")
-                    if len(clean) > 35:
-                        clean = clean[:35] + "…"
+                    if len(clean) > 55:
+                        clean = clean[:55] + "…"
                     label = f"🔄 {clean}" if is_reverse else clean
                     labels.append(label)
 
