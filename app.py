@@ -281,7 +281,7 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
     fig, ax = plt.subplots(figsize=(7, 3.5))
     x = list(range(len(radar_areas)))
     area_en = ["Academic", "Social", "University", "Economic", "Emotional", "Career"]
-    ax.bar(x, dept_vals, color="#667eea", alpha=0.8, label=dept[:6]+".." if len(dept)>6 else dept)
+    ax.bar(x, dept_vals, color="#667eea", alpha=0.8, label="Dept")
     ax.plot(x, all_vals, "o--", color="#2c3e50", linewidth=1.5, markersize=5, label="Total Avg")
     ax.set_xticks(x)
     ax.set_xticklabels(area_en, fontsize=8)
