@@ -225,7 +225,7 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
                       "적응안정형": "#3498db", "고적응성취형": "#2ecc71"}
         fig, ax = plt.subplots(figsize=(5, 3))
         type_en = {"저적응위기형": "Low-Risk", "적응취약형": "Vulnerable",
-               "적응안정형": "Stable", "고적응성취형": "High-Achieve"}
+                   "적응안정형": "Stable", "고적응성취형": "High-Achieve"}
         ax.pie(
             [v[1] for v in valid_types],
             labels=[type_en.get(v[0], v[0]) for v in valid_types],
@@ -233,7 +233,7 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
             autopct="%1.1f%%", startangle=90,
             textprops={"fontsize": 8}
         )
-        ax.set_title(f"{dept} 유형 분포", fontsize=10)
+        ax.set_title("Type Distribution", fontsize=10)
         img_buf = io.BytesIO()
         plt.savefig(img_buf, format="png", dpi=120, bbox_inches="tight")
         plt.close()
@@ -244,7 +244,7 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("2. 영역별 적응 점수", h2_s))
     AREAS = ["학업적응", "사회적응", "대학적응", "경제적응", "정서적응", "진로적응", "중도탈락의도"]
-    area_data = [["영역", f"{dept} 평균", "전체 평균", "차이"]]
+    area_data = [["영역", "학과평균", "전체평균", "차이"]]
     for a in AREAS:
         dm = ar.get(f"{a}_평균", None)
         am = ar_all.get(f"{a}_평균", None) if ar_all is not None else None
@@ -280,12 +280,10 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
 
     fig, ax = plt.subplots(figsize=(7, 3.5))
     x = list(range(len(radar_areas)))
-    ax.bar(x, dept_vals, color="#667eea", alpha=0.8, label=dept)
-    ax.plot(x, all_vals, "o--", color="#2c3e50", linewidth=1.5, markersize=5, label="전체 평균")
-    ax.set_xticks(x)
-    ax.set_xticklabels(radar_areas, fontsize=8)
-    ax.set_ylim(0, 5.5)
     area_en = ["Academic", "Social", "University", "Economic", "Emotional", "Career"]
+    ax.bar(x, dept_vals, color="#667eea", alpha=0.8, label=dept[:6]+".." if len(dept)>6 else dept)
+    ax.plot(x, all_vals, "o--", color="#2c3e50", linewidth=1.5, markersize=5, label="Total Avg")
+    ax.set_xticks(x)
     ax.set_xticklabels(area_en, fontsize=8)
     ax.set_ylim(0, 5.5)
     ax.set_ylabel("Mean Score", fontsize=8)
@@ -311,7 +309,7 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
             if not items:
                 continue
             story.append(Paragraph(f"▶ {area}", area_s))
-            item_data = [["문항", dept, "전체", "차이"]]
+            item_data = [["문항", "학과평균", "전체평균", "차이"]]
             for item_name, mc, sc in items:
                 key_m = f"{area}||{item_name}||평균"
                 dm = ir.get(key_m, None)
