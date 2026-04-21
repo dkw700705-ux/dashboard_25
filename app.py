@@ -5,6 +5,10 @@ import numpy as np
 
 st.set_page_config(
     page_title="25학번 대학 적응 조사 대시보드",
+    password = st.sidebar.text_input("비밀번호", type="password")
+if password != "4872":
+    st.warning("비밀번호를 입력해주세요.")
+    st.stop()
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
