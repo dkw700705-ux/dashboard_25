@@ -224,9 +224,11 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
         pie_colors = {"저적응위기형": "#e74c3c", "적응취약형": "#e67e22",
                       "적응안정형": "#3498db", "고적응성취형": "#2ecc71"}
         fig, ax = plt.subplots(figsize=(5, 3))
+        type_en = {"저적응위기형": "Low-Risk", "적응취약형": "Vulnerable",
+               "적응안정형": "Stable", "고적응성취형": "High-Achieve"}
         ax.pie(
             [v[1] for v in valid_types],
-            labels=[v[0] for v in valid_types],
+            labels=[type_en.get(v[0], v[0]) for v in valid_types],
             colors=[pie_colors[v[0]] for v in valid_types],
             autopct="%1.1f%%", startangle=90,
             textprops={"fontsize": 8}
@@ -283,9 +285,12 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
     ax.set_xticks(x)
     ax.set_xticklabels(radar_areas, fontsize=8)
     ax.set_ylim(0, 5.5)
-    ax.set_ylabel("평균 점수", fontsize=8)
+    area_en = ["Academic", "Social", "University", "Economic", "Emotional", "Career"]
+    ax.set_xticklabels(area_en, fontsize=8)
+    ax.set_ylim(0, 5.5)
+    ax.set_ylabel("Mean Score", fontsize=8)
     ax.legend(fontsize=8)
-    ax.set_title("영역별 적응 점수 비교", fontsize=10)
+    ax.set_title("Adaptation Score by Domain", fontsize=10)
     ax.grid(axis="y", alpha=0.3)
     for i, d in enumerate(dept_vals):
         ax.text(i, d + 0.05, f"{d:.2f}", ha="center", fontsize=7)
