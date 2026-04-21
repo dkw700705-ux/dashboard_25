@@ -317,8 +317,8 @@ def make_pdf(dept, df_type, df_area, df_item, item_map, ar_all, ir_all):
                 diff = dm - am if pd.notna(dm) and pd.notna(am) else None
                 is_rev = "[역] " if item_name.endswith("*") else ""
                 short = item_name.rstrip("*").strip()
-                if len(short) > 35:
-                    short = short[:35] + "..."
+                if len(short) > 55:
+                    short = short[:55] + "..."
                 item_data.append([
                     f"{is_rev}{short}",
                     f"{dm:.2f}" if pd.notna(dm) else "-",
